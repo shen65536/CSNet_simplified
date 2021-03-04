@@ -3,45 +3,36 @@ import time
 import torch
 import argparse
 import torchvision
+import numpy as np
 import torch.nn as nn
+import scipy.io as scio
 import torch.optim as optimize
 import torch.utils.data as data
 
 from CSNet import CSNet
 
-""" the local ../images/test/test folder is from BSDS500/data/images/test. """
-""" the local ../images/test/train folder is from BSDS500/data/images/train. """
+
 parser = argparse.ArgumentParser(description="Demo of CSNet.")
 parser.add_argument("--epochs", default=100, type=int, metavar="NUM")
 parser.add_argument("--batch_size", default=20, type=int, metavar="SIZE")
 parser.add_argument("--block_size", default=32, type=int, metavar="SIZE")
-# parser.add_argument("--image_size", default=256, type=int, metavar="SIZE")
-parser.add_argument("--test_path", default="../images/test", metavar="PATH")
+parser.add_argument("--test_path", default="../BSD100", metavar="PATH")
 parser.add_argument("--train_path", default="../images/train", metavar="PATH")
 opt = parser.parse_args()
 
 
 def loader():
-    test_transforms = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.RandomCrop(opt.block_size)
-        # torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-
-    train_transforms = torchvision.transforms.Compose([
+    transforms = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
         torchvision.transforms.RandomVerticalFlip(),
         torchvision.transforms.RandomHorizontalFlip(),
-        torchvision.transforms.RandomCrop(opt.block_size)
-        # torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        torchvision.transforms.RandomCrop(opt.block_size),
+        torchvision.transforms.Grayscale(num_output_channels=1)
     ])
 
-    test_dataset = torchvision.datasets.ImageFolder(opt.test_path, transform=test_transforms)
-    train_dataset = torchvision.datasets.ImageFolder(opt.train_path, transform=train_transforms)
-
-    test_data_loader = data.DataLoader(test_dataset, batch_size=opt.batch_size, shuffle=True)
+    train_dataset = torchvision.datasets.ImageFolder(opt.train_path, transform=transforms)
     train_data_loader = data.DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=True)
-    return train_data_loader, test_data_loader
+    return train_data_loader
 
 
 def train(net):
@@ -49,7 +40,7 @@ def train(net):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         net.to(device)
 
-        train_set, _ = loader()
+        train_set = loader()
 
         criterion = nn.MSELoss()
         optimizer = optimize.Adam(net.parameters())
@@ -83,23 +74,31 @@ def val(net):
 
         net.load_state_dict(torch.load('./CSNet.pth', map_location='cpu'))
         tensor2image = torchvision.transforms.ToPILImage()
-        criterion = nn.MSELoss()
-        _, test_set = loader()
-        sum_mse = 0
 
-        for idx, (input, name) in enumerate(test_set):
-            with torch.no_grad():
-                output = net(input)
-                sum_mse += criterion(output, input).item()
+        for i in range(100):
+            name = (opt.test_path + "/({}).mat".format(i + 1))
+            mat = scio.loadmat(name)
+            mat = mat['temp3']
+            tensor = torch.from_numpy(np.array(mat))
 
-                batch_tensor = output.cpu().clone()
-                list_tensor = batch_tensor.chunk(opt.batch_size, dim=0)
-                for i in range(opt.batch_size):
-                    tensor = list_tensor[i].squeeze()
-                    image = tensor2image(tensor)
-                    image.save("./images/{}.jpg".format(idx * 10 + i + 1))
-        average_mse = sum_mse / (len(test_set) * opt.batch_size)
-        print("=> sum_mse: {:.4f}, average_mse: {:.4f}".format(sum_mse, average_mse))
+            output = torch.zeros(tensor.size())
+            h, w = tensor.size()
+            num_h = h / opt.block_size
+            num_w = w / opt.block_size
+            for idx_h in range(int(num_h)):
+                for idx_w in range(int(num_w)):
+
+                    h1 = idx_h * opt.block_size
+                    h2 = h1 + opt.block_size
+                    w1 = idx_w * opt.block_size
+                    w2 = w1 + opt.block_size
+
+                    input = tensor[h1:h2, w1:w2]
+                    input = input.unsqueeze(0).unsqueeze(0)
+                    tmp = net(input)
+                    output[h1:h2, w1:w2] = tmp
+            image = tensor2image(output)
+            image.save("./images/{}.jpg".format(i + 1))
 
 
 if __name__ == "__main__":
