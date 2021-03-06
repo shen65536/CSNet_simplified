@@ -10,6 +10,7 @@ import torch.optim as optimize
 import torch.utils.data as data
 
 from CSNet import CSNet
+from NewCSNet import CSNet
 
 
 parser = argparse.ArgumentParser(description="Demo of CSNet.")
@@ -18,6 +19,7 @@ parser.add_argument("--batch_size", default=20, type=int, metavar="SIZE")
 parser.add_argument("--block_size", default=32, type=int, metavar="SIZE")
 parser.add_argument("--test_path", default="../BSD100", metavar="PATH")
 parser.add_argument("--train_path", default="../images/train", metavar="PATH")
+parser.add_argument("--save_file", default="./CSNet.pth", metavar="FILE")
 opt = parser.parse_args()
 
 
@@ -36,7 +38,7 @@ def loader():
 
 
 def train(net):
-    if not os.path.isfile("./CSNet.pth"):
+    if not os.path.isfile(opt.save_file):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         net.to(device)
 
@@ -51,28 +53,30 @@ def train(net):
 
         for epoch in range(opt.epochs):
             for i, (input, name) in enumerate(train_set):
+                net.train()
                 optimizer.zero_grad()
-                output = net(input)
-                loss = criterion(output, input)
 
-                loss.backward()
+                output = net(input)
+
+                loss1 = criterion(output, input)
+                loss1.backward()
                 optimizer.step()
                 optimizer.zero_grad()
-                use_time = time.time() - time_start
 
-                print("=> epoch: {}, batch: {:.0f}, loss: {:.4f}, lr: {}, time: {:.3f}"
-                      .format(epoch + 1, i + 1, loss.item(), optimizer.param_groups[0]["lr"], use_time))
+                use_time = time.time() - time_start
+                print("=> epoch: {}, batch: {:.0f}, loss1: {:.4f}, lr: {}, time: {:.3f}"
+                      .format(epoch + 1, i + 1, loss1.item(), optimizer.param_groups[0]["lr"], use_time))
             scheduler.step()
         print("=> Train end.")
-        torch.save(net.state_dict(), net.save_path)
+        torch.save(net.state_dict(), opt.save_file)
 
 
 def val(net):
-    if os.path.isfile("./CSNet.pth"):
+    if os.path.isfile(opt.save_file):
         if not os.path.exists("./images"):
             os.makedirs("./images")
 
-        net.load_state_dict(torch.load('./CSNet.pth', map_location='cpu'))
+        net.load_state_dict(torch.load(opt.save_file, map_location='cpu'))
         tensor2image = torchvision.transforms.ToPILImage()
 
         for i in range(100):
@@ -93,8 +97,7 @@ def val(net):
                     w1 = idx_w * opt.block_size
                     w2 = w1 + opt.block_size
 
-                    input = tensor[h1:h2, w1:w2]
-                    input = input.unsqueeze(0).unsqueeze(0)
+                    input = tensor[h1:h2, w1:w2].unsqueeze(0).unsqueeze(0)
                     tmp = net(input)
                     output[h1:h2, w1:w2] = tmp
             image = tensor2image(output)
@@ -103,5 +106,6 @@ def val(net):
 
 if __name__ == "__main__":
     cs_net = CSNet()
+
     train(cs_net)
     val(cs_net)
