@@ -16,9 +16,6 @@ class CSNet(nn.Module):
         self.conv4 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.conv5 = nn.Conv2d(64, channels, kernel_size=3, padding=1)
 
-        # self.conv2 = nn.Conv2d(1, 1, kernel_size=3, padding=1, stride=1, bias=False)
-        # self.conv3 = nn.Conv2d(1, channels, kernel_size=3, padding=1, stride=1, bias=False)
-
         self.pixel_shuffle = nn.PixelShuffle(32)
         self.relu = nn.ReLU(inplace=True)
 
@@ -28,12 +25,6 @@ class CSNet(nn.Module):
         output = self.sample(x)
         output = self.init(output)
         output = self.pixel_shuffle(output)
-
-        # output = self.relu(self.conv1(output))
-        # output = self.relu(self.conv2(output))
-        # output = self.relu(self.conv2(output))
-        # output = self.relu(self.conv2(output))
-        # output = self.conv3(output)
 
         output = self.relu(self.conv1(output))
         output = self.relu(self.conv2(output))
