@@ -20,8 +20,6 @@ class CSNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        x = x.to(device)
         output = self.sample(x)
         output = self.init(output)
         output = self.pixel_shuffle(output)

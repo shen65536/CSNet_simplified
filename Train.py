@@ -83,12 +83,12 @@ def loader():
 
 def train(net):
     if not os.path.isfile(opt.save_file):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        net.to(device)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        net = nn.DataParallel(net).to(device)
 
         train_set = loader()
 
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss().to(device)
         optimizer = optimize.Adam(net.parameters())
         scheduler = optimize.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80], gamma=0.1)
 
@@ -98,20 +98,20 @@ def train(net):
         for epoch in range(opt.epochs):
             for i, input in enumerate(train_set):
                 for item in range(input.size(1)):
-                    data = input[:, item, :, :, :]
+                    data = input[:, item, :, :, :].to(device)
                     net.train()
                     optimizer.zero_grad()
 
                     output = net(data)
 
-                    loss1 = criterion(output, data)
-                    loss1.backward()
+                    loss = criterion(output, data)
+                    loss.backward()
                     optimizer.step()
                     optimizer.zero_grad()
 
                     use_time = time.time() - time_start
-                    print("=> epoch: {}, batch: {:.0f}, loss1: {:.4f}, lr: {}, time: {:.3f}"
-                          .format(epoch + 1, i + 1, loss1.item(), optimizer.param_groups[0]["lr"], use_time))
+                    print("=> epoch: {}, batch: {:.0f}, loss: {:.4f}, lr: {}, time: {:.3f}"
+                          .format(epoch + 1, i + 1, loss.item(), optimizer.param_groups[0]["lr"], use_time))
             scheduler.step()
         print("=> Train end.")
         torch.save(net.state_dict(), opt.save_file)
@@ -122,33 +122,38 @@ def val(net):
         if not os.path.exists("./images"):
             os.makedirs("./images")
 
-        net.load_state_dict(torch.load(opt.save_file, map_location='cpu'))
+        if not torch.cuda.is_available():
+            net.load_state_dict(torch.load(opt.save_file, map_location='cpu'))
+        else:
+            net.load_state_dict(torch.load(opt.save_file))
+
         tensor2image = torchvision.transforms.ToPILImage()
 
-        for i in range(100):
-            name = (opt.test_path + "/({}).mat".format(i + 1))
-            mat = scio.loadmat(name)
-            mat = mat['temp3']
-            tensor = torch.from_numpy(np.array(mat))
+        with torch.no_grad:
+            for i in range(100):
+                name = (opt.test_path + "/({}).mat".format(i + 1))
+                mat = scio.loadmat(name)
+                mat = mat['temp3']
+                tensor = torch.from_numpy(np.array(mat))
 
-            output = torch.zeros(tensor.size())
-            h, w = tensor.size()
-            num_h = h / opt.block_size
-            num_w = w / opt.block_size
-            for idx_h in range(int(num_h)):
-                for idx_w in range(int(num_w)):
+                output = torch.zeros(tensor.size())
+                h, w = tensor.size()
+                num_h = h / opt.block_size
+                num_w = w / opt.block_size
+                for idx_h in range(int(num_h)):
+                    for idx_w in range(int(num_w)):
 
-                    h1 = idx_h * opt.block_size
-                    h2 = h1 + opt.block_size
-                    w1 = idx_w * opt.block_size
-                    w2 = w1 + opt.block_size
+                        h1 = idx_h * opt.block_size
+                        h2 = h1 + opt.block_size
+                        w1 = idx_w * opt.block_size
+                        w2 = w1 + opt.block_size
 
-                    input = tensor[h1:h2, w1:w2].unsqueeze(0).unsqueeze(0)
-                    tmp = net(input)
-                    output[h1:h2, w1:w2] = tmp
-            image = tensor2image(output)
-            image.save("./res/{}.jpg".format(i + 1))
-            print("=> image {} done!".format(i))
+                        input = tensor[h1:h2, w1:w2].unsqueeze(0).unsqueeze(0)
+                        tmp = net(input)
+                        output[h1:h2, w1:w2] = tmp
+                image = tensor2image(output)
+                image.save("./res/{}.jpg".format(i + 1))
+                print("=> image {} done!".format(i))
 
 
 if __name__ == "__main__":
