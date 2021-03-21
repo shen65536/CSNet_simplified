@@ -1,2 +1,1 @@
-# CSNet_simplified
-A simplified CSNet imple.
+A CSNet sample for BCS.
